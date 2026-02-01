@@ -1,26 +1,10 @@
 # TFA Framework Requirements
 # Python 3.8+
 
-# Core dependencies (standard library only for core functionality)
-# No external dependencies required for basic TFA analysis
+# Core dependencies (standard library only for basic functionality)
+# No external dependencies required for core TFA analysis
 
-# Optional dependencies for extended functionality:
-
-# For visualization exports
-# graphviz>=0.20
-
-# For JSON schema validation
-# jsonschema>=4.0
-
-# For benchmark statistics
-# numpy>=1.21
-# scipy>=1.7
-
-# For generating PDF reports
-# reportlab>=3.6
-
-# Development dependencies:
-# pytest>=7.0
-# pytest-cov>=3.0
-# black>=22.0
-# mypy>=0.950
+# Optional for enhanced functionality:
+# numpy>=1.21        # For statistical analysis
+# matplotlib>=3.5    # For visualization
+# pytest>=7.0        # For testing

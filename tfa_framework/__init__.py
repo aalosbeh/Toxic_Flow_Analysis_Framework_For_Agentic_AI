@@ -1,1 +1,2 @@
-"""TFA Framework Core Module."""
+"""TFA Framework - Core Module"""
+from .core import *

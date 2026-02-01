@@ -2,22 +2,33 @@
 
 A Secure-by-Design framework for detecting and mitigating toxic flows in LLM-based autonomous agent systems.
 
-## Overview
+## Paper
 
-This implementation accompanies the paper:
+This implementation accompanies:
 
 > **"Secure-by-Design Framework for Agentic AI: Mitigating Toxic Flows and Adversarial Exploits in Multi-Agent Ecosystems"**
 > 
 > AlSobeh, Shatnawi, Khamaiseh
 > i-ETC 2026 Conference
 
-## Features
+## Important Notes
 
-- **Static Toxic Flow Analysis**: Graph-based reachability analysis with trust propagation
-- **Trust/Capability Lattices**: Formal information-flow control semantics
-- **Sanitizer Specifications**: Verifiable trust elevation mechanisms
-- **Provenance Tracking**: Cryptographic metadata for runtime enforcement
-- **Benchmark Suite**: Synthetic evaluation based on AgentDojo patterns
+### Relationship to IFDS
+
+This implementation draws conceptual inspiration from classical taint analysis, particularly the IFDS framework's source-to-sink reachability. However, **we do NOT implement full IFDS** with exploded supergraphs and distributive flow functions. Instead, we use a BFS-style traversal appropriate for agent workflow graphs where non-deterministic LLM behavior precludes precise dataflow assumptions.
+
+**Complexity:** O(|V| × |E| × |D|) where |D| = |TrustLattice| = 3
+
+### Benchmark Reproducibility
+
+All benchmarks use **fixed parameters** for reproducibility:
+
+- **Random seed:** 42
+- **Graph sizes:** 15-50 nodes (uniform)
+- **Edge density:** 1.5-2.5 edges per node
+- **Capability distribution:** 40% R, 35% W, 25% S
+- **Sanitizer placement:** 20% probability per edge
+- **Attack depth:** 1-5 hops (uniform)
 
 ## Installation
 
@@ -35,17 +46,10 @@ from tfa_framework.core import (
 
 # Create workflow graph
 graph = AgentWorkflowGraph("my_agent")
-
-# Add sources
-graph.add_source("user_prompt", TrustLevel.TRUSTED, "User input")
 graph.add_source("external_api", TrustLevel.UNTRUSTED, "Third-party data")
-
-# Add LLM and tools
 graph.add_llm("llm")
 graph.add_tool("send_email", CapabilityLevel.SENSITIVE, "send_email")
 
-# Connect workflow
-graph.add_edge("user_prompt", "llm")
 graph.add_edge("external_api", "llm")
 graph.add_edge("llm", "send_email")
 
@@ -63,23 +67,20 @@ if flows:
 
 ```bash
 # Run all demonstrations
-python main.py
+python main.py --demo all
 
-# Run specific demo (1-5)
-python main.py --demo 2
+# GitHub MCP exploit only
+python main.py --demo github
 
-# Full benchmark evaluation
-python main.py --full-eval
-
-# Export results and visualizations
-python main.py --export
+# Mini benchmark
+python main.py --demo benchmark
 ```
 
 ## Project Structure
 
 ```
 code/
-├── main.py                    # Main runner script
+├── main.py                    # Demo runner
 ├── tfa_framework/
 │   ├── __init__.py
 │   └── core.py               # Core TFA implementation
@@ -87,45 +88,17 @@ code/
 │   ├── __init__.py
 │   └── evaluation.py         # Benchmark evaluation
 ├── datasets/
-│   ├── __init__.py
-│   └── attack_patterns.py    # Attack pattern database
+│   └── __init__.py
 └── utils/
-    ├── __init__.py
-    └── visualization.py      # Diagram generation
+    └── __init__.py
 ```
-
-## Core Components
-
-### TrustLevel Lattice
-- `UNTRUSTED` (U): External, unverified data
-- `PARTIAL` (P): Sanitized/validated data
-- `TRUSTED` (T): Internal, verified data
-
-### CapabilityLevel Lattice
-- `READ`: Read-only operations
-- `WRITE`: State-modifying operations
-- `SENSITIVE`: Exfiltration-capable operations
-
-### Key Classes
-- `AgentWorkflowGraph`: Represents agent workflow as directed graph
-- `ToxicFlowAnalyzer`: Static analysis engine
-- `ProvenanceTracker`: Runtime metadata tracking
-- `DynamicEnforcer`: Runtime policy enforcement
-- `SanitizerSpec`: Formal sanitizer specification
-
-## Evaluation Metrics
-
-The framework is evaluated on synthetic benchmarks measuring:
-- **TPR** (True Positive Rate): Detection rate
-- **FPR** (False Positive Rate): False alarm rate
-- **F1 Score**: Harmonic mean of precision and recall
-- **Latency**: Analysis time in milliseconds
 
 ## Citation
 
 ```bibtex
 @inproceedings{alsobeh2026tfa,
-  title={Secure-by-Design Framework for Agentic AI: Mitigating Toxic Flows and Adversarial Exploits in Multi-Agent Ecosystems},
+  title={Secure-by-Design Framework for Agentic AI: Mitigating Toxic Flows 
+         and Adversarial Exploits in Multi-Agent Ecosystems},
   author={AlSobeh, Anas and Shatnawi, Amani and Khamaiseh, Samer},
   booktitle={Proceedings of the i-ETC Conference},
   year={2026}
@@ -134,11 +107,4 @@ The framework is evaluated on synthetic benchmarks measuring:
 
 ## License
 
-This code is provided for academic and research purposes accompanying the published paper.
-
-## Acknowledgments
-
-- AgentDojo benchmark (Debenedetti et al., NeurIPS 2024)
-- InjecAgent (Zhan et al., ACL 2024)
-- FIDES framework (Costa & Köpf, 2025)
-- CaMeL architecture (Wu et al., 2025)
+Academic and research use. See paper for details.
