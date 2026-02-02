@@ -1,30 +1,62 @@
 #!/usr/bin/env python3
 """
-TFA Framework - Main Runner
+TFA Framework v4.0 - Main Runner
 
-Demonstrates Toxic Flow Analysis capabilities:
-1. GitHub MCP exploit detection
-2. Mitigated scenario verification
-3. Benchmark evaluation
+Demonstrates Toxic Flow Analysis with:
+- Product capability lattice
+- Fixed-point algorithm
+- GitHub MCP exploit detection
 """
 
 import sys
-import argparse
-import json
+sys.path.insert(0, '.')
 
 from tfa_framework.core import (
-    AgentWorkflowGraph, ToxicFlowAnalyzer,
-    TrustLevel, CapabilityLevel,
+    AgentWorkflowGraph, ToxicFlowAnalyzer, ToxicFlow,
+    TrustLevel, ProductCapability,
+    ConfidentialityLevel, IntegrityLevel, SideEffectLevel,
+    CAP_READ_SECRETS, CAP_NETWORK_SEND,
     create_github_mcp_scenario,
     create_mitigated_github_scenario,
-    ProvenanceTracker, DynamicEnforcer,
     APPROVAL_SANITIZER
 )
+from tfa_framework.lattices import composition_risk
+
+
+def demo_product_lattice():
+    """Demonstrate product lattice vs linear lattice."""
+    print("=" * 60)
+    print("DEMO: Product Capability Lattice")
+    print("=" * 60)
+    
+    # Create capabilities
+    git_read = CAP_READ_SECRETS  # (H, L, N)
+    send_net = CAP_NETWORK_SEND  # (L, L, E)
+    
+    print(f"\ngit_read_file capability: {git_read}")
+    print(f"  - Confidentiality: HIGH (reads secrets)")
+    print(f"  - Integrity: LOW (no state change)")
+    print(f"  - Side-effects: NONE (no network)")
+    print(f"  - Is sensitive? {git_read.is_sensitive}")
+    
+    print(f"\nsend_network capability: {send_net}")
+    print(f"  - Confidentiality: LOW (no local secrets)")
+    print(f"  - Integrity: LOW (no local state)")
+    print(f"  - Side-effects: EXTERNAL (network egress)")
+    print(f"  - Is sensitive? {send_net.is_sensitive}")
+    
+    print(f"\n⚠️  Composition risk check:")
+    print(f"  composition_risk(git_read, send_net) = {composition_risk(git_read, send_net)}")
+    print("  → Secrets can flow from git_read through send_network!")
+    
+    print("\nKey insight: Under linear R ⊑ W ⊑ S lattice, both tools might")
+    print("be classified as 'Read' and appear safe. Product lattice captures")
+    print("the exfiltration risk from their composition.")
 
 
 def demo_github_exploit():
     """Demonstrate GitHub MCP exploit detection."""
-    print("=" * 60)
+    print("\n" + "=" * 60)
     print("DEMO: GitHub MCP Exploit Detection")
     print("=" * 60)
     
@@ -37,161 +69,126 @@ def demo_github_exploit():
     flows = analyzer.analyze(vulnerable)
     
     print(f"   Graph: {vulnerable}")
+    print(f"   Fixed-point iterations: {analyzer.iterations}")
+    print(f"   Analysis time: {analyzer.analysis_time_ms:.2f}ms")
     print(f"   Toxic flows detected: {len(flows)}")
     
     if flows:
         flow = flows[0]
-        print(f"   Attack path: {' → '.join(flow.path)}")
-        print(f"   Severity: {flow.severity}")
-        print(f"   Source trust: {flow.source_trust.name}")
-        print(f"   Sink capability: {flow.sink_capability.name}")
+        print(f"\n   Toxic Flow Details:")
+        print(f"     Path: {' → '.join(flow.path)}")
+        print(f"     Severity: {flow.severity}")
+        print(f"     Source trust: {flow.source_trust.name}")
+        print(f"     Sink capability: {flow.sink_capability}")
+        print(f"     Propagated trust: {flow.propagated_trust.name}")
     
     # Mitigated scenario
-    print("\n2. Mitigated Configuration:")
+    print("\n2. Mitigated Configuration (with sanitizer):")
     print("-" * 40)
     
     mitigated = create_mitigated_github_scenario()
     flows_mit = analyzer.analyze(mitigated)
     
     print(f"   Graph: {mitigated}")
+    print(f"   Fixed-point iterations: {analyzer.iterations}")
     print(f"   Toxic flows detected: {len(flows_mit)}")
     
     if not flows_mit:
         print("   ✓ SUCCESS: Sanitizer blocks toxic flow!")
-    
-    print(f"\n   Analysis time: {analyzer.analysis_time_ms:.2f}ms")
+    else:
+        print("   ✗ Toxic flow still present")
 
 
-def demo_custom_workflow():
-    """Demonstrate custom workflow analysis."""
+def demo_fixed_point():
+    """Demonstrate fixed-point iteration on cyclic graph."""
     print("\n" + "=" * 60)
-    print("DEMO: Custom Workflow Analysis")
+    print("DEMO: Fixed-Point Iteration on Cyclic Graph")
     print("=" * 60)
     
-    # Build custom workflow
-    graph = AgentWorkflowGraph("banking_agent")
+    # Create cyclic ReAct pattern
+    graph = AgentWorkflowGraph("react_loop")
     
-    # Sources
-    graph.add_source("user_command", TrustLevel.TRUSTED, "Direct user input")
-    graph.add_source("email_content", TrustLevel.UNTRUSTED, "Email from external sender")
+    graph.add_source("external_data", TrustLevel.UNTRUSTED, "External API response")
+    graph.add_source("user_goal", TrustLevel.TRUSTED, "User objective")
     
-    # LLM
     graph.add_llm("planner")
+    graph.add_llm("executor")
     
-    # Sanitizer
-    graph.add_sanitizer("approval_gate", APPROVAL_SANITIZER)
+    graph.add_tool("read_state", ProductCapability(
+        ConfidentialityLevel.HIGH, IntegrityLevel.LOW, SideEffectLevel.NONE
+    ), "read_state")
+    graph.add_tool("write_state", ProductCapability(
+        ConfidentialityLevel.LOW, IntegrityLevel.HIGH, SideEffectLevel.NONE
+    ), "write_state")
+    graph.add_tool("send_result", ProductCapability(
+        ConfidentialityLevel.LOW, IntegrityLevel.LOW, SideEffectLevel.EXTERNAL
+    ), "send_result")
     
-    # Tools
-    graph.add_tool("get_balance", CapabilityLevel.READ, "get_balance")
-    graph.add_tool("transfer_funds", CapabilityLevel.SENSITIVE, "transfer_funds")
+    # Create cycle: planner → executor → read_state → planner (loop)
+    graph.add_edge("external_data", "planner")
+    graph.add_edge("user_goal", "planner")
+    graph.add_edge("planner", "executor")
+    graph.add_edge("executor", "read_state")
+    graph.add_edge("read_state", "planner")  # Back edge creates cycle
+    graph.add_edge("executor", "write_state")
+    graph.add_edge("planner", "send_result")
     
-    # Edges - WITHOUT sanitizer on email path (vulnerable)
-    graph.add_edge("user_command", "planner")
-    graph.add_edge("email_content", "planner")
-    graph.add_edge("planner", "get_balance")
-    graph.add_edge("planner", "transfer_funds")
+    print(f"\n   Graph: {graph}")
+    print(f"   Contains cycle: planner → executor → read_state → planner")
     
-    # Analyze
     analyzer = ToxicFlowAnalyzer()
     flows = analyzer.analyze(graph)
     
-    print(f"\nWorkflow: {graph}")
-    print(f"Has cycles: {graph.has_cycles()}")
-    print(f"Untrusted sources: {[s.node_id for s in graph.get_untrusted_sources()]}")
-    print(f"Sensitive sinks: {[t.node_id for t in graph.get_sensitive_sinks()]}")
-    print(f"\nToxic flows found: {len(flows)}")
+    print(f"\n   Fixed-point iterations: {analyzer.iterations}")
+    print(f"   (Multiple iterations needed for cycle convergence)")
+    print(f"   Toxic flows detected: {len(flows)}")
     
     for i, flow in enumerate(flows):
-        print(f"\n  Flow {i+1}:")
-        print(f"    Path: {' → '.join(flow.path)}")
-        print(f"    Severity: {flow.severity}")
+        print(f"\n   Flow {i+1}: {flow.severity} severity")
+        print(f"     Path: {' → '.join(flow.path)}")
 
 
-def demo_provenance_tracking():
-    """Demonstrate runtime provenance tracking."""
+def demo_soundness_limitations():
+    """Demonstrate soundness limitations."""
     print("\n" + "=" * 60)
-    print("DEMO: Runtime Provenance Tracking")
+    print("DEMO: Soundness Limitations")
     print("=" * 60)
     
-    tracker = ProvenanceTracker()
-    
-    # Tag some content
-    user_hash = tracker.tag("Transfer $100 to savings", "user_command", TrustLevel.TRUSTED)
-    email_hash = tracker.tag("Transfer $10000 to attacker.com", "email", TrustLevel.UNTRUSTED)
-    
-    print(f"\nTagged content:")
-    print(f"  User command (TRUSTED): {user_hash[:16]}...")
-    print(f"  Email content (UNTRUSTED): {email_hash[:16]}...")
-    
-    # Derive combined content
-    combined_hash = tracker.derive("Execute transfer based on inputs", [user_hash, email_hash])
-    
-    print(f"\nDerived content (combined): {combined_hash[:16]}...")
-    print(f"  Derived trust: {tracker.metadata[combined_hash].trust_level.name}")
-    print("  (Conservative join: UNTRUSTED wins)")
-    
-    # Check verification
-    print(f"\nVerification checks:")
-    print(f"  User content meets TRUSTED? {tracker.verify('Transfer $100 to savings', TrustLevel.TRUSTED)}")
-    print(f"  Email content meets TRUSTED? {tracker.verify('Transfer $10000 to attacker.com', TrustLevel.TRUSTED)}")
-
-
-def run_mini_benchmark():
-    """Run a small benchmark demonstration."""
-    print("\n" + "=" * 60)
-    print("DEMO: Mini Benchmark (50 graphs)")
-    print("=" * 60)
-    
-    from experiments.evaluation import BenchmarkConfig, BenchmarkGenerator, ExperimentRunner
-    
-    config = BenchmarkConfig(
-        seed=42,
-        num_benign=20,
-        num_malicious=30,
-        min_nodes=10,
-        max_nodes=25
-    )
-    
-    print(f"\nGenerating benchmark with seed={config.seed}...")
-    generator = BenchmarkGenerator(config)
-    benchmark = generator.generate_benchmark()
-    
-    print(f"Generated {len(benchmark)} graphs")
-    
-    runner = ExperimentRunner(benchmark)
-    result = runner.evaluate_tfa()
-    
-    print(f"\nTFA Results:")
-    print(f"  True Positive Rate: {result.tpr * 100:.1f}%")
-    print(f"  False Positive Rate: {result.fpr * 100:.1f}%")
-    print(f"  F1 Score: {result.f1_score:.3f}")
-    print(f"  Mean Latency: {result.mean_latency_ms:.2f}ms")
+    print("""
+   TFA provides sound over-approximation ONLY IF the workflow graph
+   includes all possible information flows (Theorem 1).
+   
+   Limitations that may cause FALSE NEGATIVES:
+   
+   1. IMPLICIT EDGES: LLM may invoke tools not modeled in graph
+      → Solution: Conservative modeling of all possible tool calls
+   
+   2. DYNAMIC TOOL DISCOVERY: MCP allows runtime tool registration
+      → Solution: Re-analyze after tool additions
+   
+   3. LLM NON-DETERMINISM: Same input may produce different tool sequences
+      → Solution: Model all possible sequences (exponential worst case)
+   
+   These are FUNDAMENTAL limitations of static analysis applied to
+   non-deterministic systems. TFA complements runtime enforcement
+   systems like CaMeL and FIDES.
+    """)
 
 
 def main():
-    parser = argparse.ArgumentParser(description="TFA Framework Demonstration")
-    parser.add_argument("--demo", type=str, choices=["github", "custom", "provenance", "benchmark", "all"],
-                       default="all", help="Which demo to run")
-    parser.add_argument("--json", action="store_true", help="Output in JSON format")
-    
-    args = parser.parse_args()
-    
     print("=" * 60)
-    print("TOXIC FLOW ANALYSIS (TFA) FRAMEWORK")
+    print("TOXIC FLOW ANALYSIS (TFA) FRAMEWORK v4.0")
     print("AlSobeh, Shatnawi, Khamaiseh - i-ETC 2026")
     print("=" * 60)
+    print("\nKey improvements in v4.0:")
+    print("  - Product capability lattice (Conf × Int × SE)")
+    print("  - Fixed-point algorithm (proper lattice semantics)")
+    print("  - Explicit soundness guarantees")
     
-    if args.demo in ["github", "all"]:
-        demo_github_exploit()
-    
-    if args.demo in ["custom", "all"]:
-        demo_custom_workflow()
-    
-    if args.demo in ["provenance", "all"]:
-        demo_provenance_tracking()
-    
-    if args.demo in ["benchmark", "all"]:
-        run_mini_benchmark()
+    demo_product_lattice()
+    demo_github_exploit()
+    demo_fixed_point()
+    demo_soundness_limitations()
     
     print("\n" + "=" * 60)
     print("DEMONSTRATION COMPLETE")

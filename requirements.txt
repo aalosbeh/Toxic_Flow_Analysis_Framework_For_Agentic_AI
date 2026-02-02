@@ -1,10 +1,3 @@
-# TFA Framework Requirements
+# TFA Framework v4.0 Requirements
 # Python 3.8+
-
-# Core dependencies (standard library only for basic functionality)
-# No external dependencies required for core TFA analysis
-
-# Optional for enhanced functionality:
-# numpy>=1.21        # For statistical analysis
-# matplotlib>=3.5    # For visualization
-# pytest>=7.0        # For testing
+# No external dependencies required for core functionality

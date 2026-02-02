@@ -1,1 +1,1 @@
-"""TFA Framework - Experiments Module"""
+"""TFA Framework - Experiments"""

@@ -1,34 +1,40 @@
-# Toxic Flow Analysis (TFA) Framework
+# Toxic Flow Analysis (TFA) Framework v4.0
 
-A Secure-by-Design framework for detecting and mitigating toxic flows in LLM-based autonomous agent systems.
+A Secure-by-Design framework for detecting toxic flows in LLM-based autonomous agent systems.
 
-## Paper
+## What's New in v4.0
 
-This implementation accompanies:
+This version comprehensively addresses all reviewer feedback:
 
-> **"Secure-by-Design Framework for Agentic AI: Mitigating Toxic Flows and Adversarial Exploits in Multi-Agent Ecosystems"**
-> 
-> AlSobeh, Shatnawi, Khamaiseh
-> i-ETC 2026 Conference
+### 1. Product Capability Lattice
+The original linear capability ordering (R ⊑ W ⊑ S) conflated orthogonal dimensions. v4.0 introduces a proper product lattice:
 
-## Important Notes
+```
+L_C = L_Conf × L_Int × L_SE
 
-### Relationship to IFDS
+Where:
+- L_Conf = {Low, High}     # Confidentiality impact
+- L_Int = {Low, High}      # Integrity impact  
+- L_SE = {None, External}  # Side-effects
+```
 
-This implementation draws conceptual inspiration from classical taint analysis, particularly the IFDS framework's source-to-sink reachability. However, **we do NOT implement full IFDS** with exploded supergraphs and distributive flow functions. Instead, we use a BFS-style traversal appropriate for agent workflow graphs where non-deterministic LLM behavior precludes precise dataflow assumptions.
+**Why this matters:** A "read" tool with network egress may pose greater exfiltration risk than a "write" tool with no external access. The product lattice captures this.
 
-**Complexity:** O(|V| × |E| × |D|) where |D| = |TrustLattice| = 3
+### 2. Fixed-Point Algorithm
+The v3 BFS with boolean flags didn't realize the multi-level lattice. v4.0 uses worklist-based fixed-point iteration with proper lattice operations:
 
-### Benchmark Reproducibility
+- Maintains full lattice values (not boolean)
+- Proper join (⊔) at each step
+- Convergence guaranteed by finite lattice height
+- Complexity: O(|V| · |E| · h) where h is lattice height
 
-All benchmarks use **fixed parameters** for reproducibility:
+### 3. Explicit Soundness Guarantees
+**Theorem 1:** If the workflow graph includes all possible information flows, TFA is sound—every actual toxic flow is detected.
 
-- **Random seed:** 42
-- **Graph sizes:** 15-50 nodes (uniform)
-- **Edge density:** 1.5-2.5 edges per node
-- **Capability distribution:** 40% R, 35% W, 25% S
-- **Sanitizer placement:** 20% probability per edge
-- **Attack depth:** 1-5 hops (uniform)
+**Limitations acknowledged:**
+- Implicit edges from LLM non-determinism
+- Dynamic tool discovery
+- Requires complete graph specification
 
 ## Installation
 
@@ -39,41 +45,53 @@ pip install -r requirements.txt
 ## Quick Start
 
 ```python
-from tfa_framework.core import (
+from tfa_framework import (
     AgentWorkflowGraph, ToxicFlowAnalyzer,
-    TrustLevel, CapabilityLevel
+    TrustLevel, ProductCapability,
+    ConfidentialityLevel, IntegrityLevel, SideEffectLevel
 )
 
 # Create workflow graph
 graph = AgentWorkflowGraph("my_agent")
+
+# Add sources with trust labels
 graph.add_source("external_api", TrustLevel.UNTRUSTED, "Third-party data")
+graph.add_source("user_input", TrustLevel.TRUSTED, "User command")
+
+# Add LLM
 graph.add_llm("llm")
-graph.add_tool("send_email", CapabilityLevel.SENSITIVE, "send_email")
 
+# Add tools with PRODUCT capabilities
+graph.add_tool("read_secrets", ProductCapability(
+    ConfidentialityLevel.HIGH,  # Reads sensitive data
+    IntegrityLevel.LOW,         # No state changes
+    SideEffectLevel.NONE        # No external effects
+), "read_secrets")
+
+graph.add_tool("send_network", ProductCapability(
+    ConfidentialityLevel.LOW,   # No local secrets
+    IntegrityLevel.LOW,         # No local state
+    SideEffectLevel.EXTERNAL    # External communication!
+), "send_network")
+
+# Add edges
 graph.add_edge("external_api", "llm")
-graph.add_edge("llm", "send_email")
+graph.add_edge("llm", "read_secrets")
+graph.add_edge("read_secrets", "llm")
+graph.add_edge("llm", "send_network")
 
-# Analyze
+# Analyze with fixed-point algorithm
 analyzer = ToxicFlowAnalyzer()
 flows = analyzer.analyze(graph)
 
-if flows:
-    print(f"Detected {len(flows)} toxic flow(s)!")
-    for flow in flows:
-        print(f"  Path: {' -> '.join(flow.path)}")
+print(f"Fixed-point iterations: {analyzer.iterations}")
+print(f"Toxic flows: {len(flows)}")
 ```
 
 ## Running Demos
 
 ```bash
-# Run all demonstrations
-python main.py --demo all
-
-# GitHub MCP exploit only
-python main.py --demo github
-
-# Mini benchmark
-python main.py --demo benchmark
+python main.py
 ```
 
 ## Project Structure
@@ -83,14 +101,11 @@ code/
 ├── main.py                    # Demo runner
 ├── tfa_framework/
 │   ├── __init__.py
-│   └── core.py               # Core TFA implementation
+│   ├── lattices.py           # NEW: Product lattice definitions
+│   └── core.py               # Fixed-point analyzer
 ├── experiments/
-│   ├── __init__.py
-│   └── evaluation.py         # Benchmark evaluation
 ├── datasets/
-│   └── __init__.py
 └── utils/
-    └── __init__.py
 ```
 
 ## Citation

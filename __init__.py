@@ -1,25 +1,11 @@
 """
-Toxic Flow Analysis (TFA) Framework
+Toxic Flow Analysis (TFA) Framework v4.0
 
-A Secure-by-Design framework for detecting and mitigating 
-toxic flows in LLM-based autonomous agent systems.
+A Secure-by-Design framework for detecting toxic flows in LLM-based
+autonomous agent systems, featuring product capability lattices and
+fixed-point analysis with explicit soundness guarantees.
 """
 
-from tfa_framework.core import (
-    TrustLevel,
-    CapabilityLevel,
-    SanitizerSpec,
-    AgentWorkflowGraph,
-    ToxicFlowAnalyzer,
-    ToxicFlow,
-    ProvenanceTracker,
-    DynamicEnforcer,
-    create_github_mcp_scenario,
-    create_mitigated_github_scenario,
-    BOOLEAN_SANITIZER,
-    APPROVAL_SANITIZER,
-    HITL_SANITIZER,
-)
+from tfa_framework import *
 
-__version__ = "1.0.0"
-__author__ = "AlSobeh, Shatnawi, Khamaiseh"
+__version__ = "4.0.0"
